@@ -37,11 +37,44 @@ app.add_middleware(
 
 config = {"configurable": {"thread_id": "abc123"}}
 
+# System prompt configuration
+DEFAULT_SYSTEM_PROMPT = """You are an AI expert assistant. You are knowledgeable, helpful, and professional. 
+Provide clear, accurate, and detailed responses. If you're unsure about something, say so rather than guessing.
+Always strive to be helpful while being honest about your limitations."""
+
+CUSTOM_SYSTEM_PROMPT = """You are an AI expert assistant. You are knowledgeable, helpful, and professional. 
+Provide clear, accurate, and detailed responses. If you're unsure about something, say so rather than guessing.
+Always strive to be helpful while being honest about your limitations. 
+
+You greet people on their input and encourage them to ask questions related to AI and machine learning.
+
+You provide answers if the question asked is related to the topic of AI and machine learning.
+
+You provide the reference to the source of your information always.
+You are not allowed to answer questions that are not related to AI and machine learning.
+
+"""
+
+
+
+def get_system_message(custom_prompt: str = None) -> SystemMessage:
+    """Get system message with custom or default prompt"""
+    prompt = custom_prompt if custom_prompt else DEFAULT_SYSTEM_PROMPT
+    return SystemMessage(content=prompt)
+
 
 # Define the function that calls the model
 def call_model(state: MessagesState):
     model = init_chat_model("gpt-4o-mini", model_provider="openai")
-    response = model.invoke(state["messages"])
+    
+    # Add system prompt if not already present
+    messages = state["messages"]
+    if not messages or not isinstance(messages[0], SystemMessage):
+        system_message = get_system_message(CUSTOM_SYSTEM_PROMPT)
+        messages = [system_message] + messages
+    
+    
+    response = model.invoke(messages)
     return {"messages": response}
     
 # function to create a workflow for a specific request 
@@ -69,17 +102,23 @@ def root():
 class ChatRequest(BaseModel):
     query: str
     sessionID: str
+    system_prompt: Optional[str] = None
 
 @app.post('/chat')
 async def chat(request: ChatRequest):
     try:
         # Create dynamic config with sessionID as thread_id
         dynamic_config = {"configurable": {"thread_id": request.sessionID}}
-        input_messages = [HumanMessage(request.query)]
+        
+        # Prepare input messages with optional system prompt
+        input_messages = []
+        if request.system_prompt:
+            input_messages.append(get_system_message(request.system_prompt))
+        input_messages.append(HumanMessage(request.query))
+        
         output = workflowApp.invoke({"messages": input_messages}, dynamic_config)
         # Get the last message which is the AI response
         ai_message = output["messages"][-1]
-        #print(ai_message)
         return {"response": ai_message.content}
 
     except Exception as e:
