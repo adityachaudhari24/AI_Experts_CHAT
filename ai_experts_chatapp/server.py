@@ -22,13 +22,11 @@ load_dotenv()
 # Validate OpenAI API key
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
-    try:
-        OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
-    except Exception:
-        raise ValueError("OPENAI_API_KEY not found in environment variables or Streamlit secrets. Please check your configuration.")
+    raise ValueError("OPENAI_API_KEY not found in environment variables. Please check your .env file.")
+
 
 # DB URL if you move all to DevContainers then change below to "mongodb://admin:admin@mongodb:27017"
-DB_URI = "mongodb://admin:admin@mongodb:27017"
+DB_URI = "mongodb://admin:admin@localhost:27017"
 
 # function to create a workflow
 def createWorkflow():
