@@ -15,7 +15,7 @@ st.set_page_config(
     }
 )
 
-API_BASE_URL = "http://localhost:8000"
+API_BASE_URL = "http://fastapi:8000"
 
 def generate_session_id() -> str:
     """Generate a unique session ID"""
