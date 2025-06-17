@@ -15,7 +15,7 @@ source venv/bin/activate  # On Windows, use: venv\Scripts\activate
 ```bash
 pip install -r requirements.txt
 ```
-freez your requirments if required `pip freeze > requirements.txt`
+freez your requirments if required `pip freeze > requirements.txt` (If you install new library then please do freez as well)
 
 
 4. Create a `.env` file in the project directory and add your OpenAI API key:
@@ -29,11 +29,11 @@ The application consists of two components: the FastAPI backend and the Streamli
 
 1. Start the FastAPI backend server: 
 Do execute `fastapi dev server.py` if you see error try installing it with `pip install "fastapi[standard]" `
-```bash
-python main.py
-```
 
-There is one more way as we have istalled the uvicorn and we have main function you can go to root folder and execute this command to start the backend server . `python -m ai_experts_chatapp.main`
+As we are using the Uvicorn we can use below command from our root folder to start an backend application
+- `python -m ai_experts_chatapp.main`  
 
 The backend server will start on http://localhost:8000
 
+2. Starting the Frontend server which is streamlit app
+- `streamlit run streamlit_app.py`

@@ -1,30 +1,59 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_openai import ChatOpenAI
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationChain
 from pydantic import BaseModel
 import os
-import json
 from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
 from typing import List, Optional
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import START, MessagesState, StateGraph
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.mongodb import MongoDBSaver
+import traceback
+from contextlib import asynccontextmanager
 
 # Load environment variables
 load_dotenv()
-
-# Add memory to the graph
-memory = MemorySaver()
 
 # Validate OpenAI API key
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY not found in environment variables. Please check your .env file.")
 
-app = FastAPI()
+
+# DB URL if you move all to DevContainers then change below to "mongodb://admin:admin@mongodb:27017"
+DB_URI = "mongodb://admin:admin@localhost:27017"
+
+# function to create a workflow
+def createWorkflow():
+    # Define a new graph
+    workflow = StateGraph(state_schema=MessagesState)
+    
+    # Define the (single) node in the graph
+    workflow.add_edge(START, "model")
+    workflow.add_node("model", call_model)
+
+    #workflow compilation will be done later with a checkpointer in async context manager
+    return workflow
+
+
+# FastAPI initialization with lifespan for mongoDB connection
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    with MongoDBSaver.from_conn_string(DB_URI) as mongo_checkpointer:
+        # Store the workflow in app state
+        workflow = createWorkflow()
+        app.state.workflow = workflow.compile(checkpointer=mongo_checkpointer)
+        yield
+
+app = FastAPI(lifespan=lifespan)
+
+# Add memory to the graph
+#memory = MemorySaver()
+
 
 # Add CORS middleware
 app.add_middleware(
@@ -77,22 +106,6 @@ def call_model(state: MessagesState):
     response = model.invoke(messages)
     return {"messages": response}
     
-# function to create a workflow for a specific request 
-def createWorkflow():
-    # Define a new graph
-    workflow = StateGraph(state_schema=MessagesState)
-    
-    # Define the (single) node in the graph
-    workflow.add_edge(START, "model")
-    workflow.add_node("model", call_model)
-
-    workflowApp = workflow.compile(checkpointer=memory)
-    
-    return workflowApp
-    
-
-# Initialize the workflow
-workflowApp = createWorkflow()
 
 @app.get('/')
 def root():
@@ -116,12 +129,19 @@ async def chat(request: ChatRequest):
             input_messages.append(get_system_message(request.system_prompt))
         input_messages.append(HumanMessage(request.query))
         
-        output = workflowApp.invoke({"messages": input_messages}, dynamic_config)
+        output = app.state.workflow.invoke({"messages": input_messages}, dynamic_config)
+        
+        # for event in app.state.workflow.stream({"messages": input_messages}, dynamic_config, stream_mode="values"):
+        #     if "messages" in event:
+        #         event["messages"][-1].pretty_print()
+        
         # Get the last message which is the AI response
         ai_message = output["messages"][-1]
+        print(f"AI Response: {ai_message.content} and request id is {request.sessionID}")  # Debugging output
         return {"response": ai_message.content}
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        error_stack = traceback.format_exc()  # Capture the full stack trace
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}\nStack Trace:\n{error_stack}")
 
 
